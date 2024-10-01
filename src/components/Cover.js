@@ -3,6 +3,7 @@ import React from 'react';
 const Cover = ({ cover, setCover }) => {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];  // Store the actual file
+    console.log(file);
     setCover({ ...cover, image: file });
   };
 

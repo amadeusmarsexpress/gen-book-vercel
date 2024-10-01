@@ -28,12 +28,30 @@ const BookGenerator = () => {
   };
 
   const upscaleImage = async (url) => {
-    const input = { image: url, scale: 2 };
-    const output = await replicate.run(
-      "nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa",
-      { input }
-    );
-    return output;
+    try {
+      const response = await fetch('/api/upscale', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageUrl: url,
+          scale: 2,  // Adjust the scale as needed
+        }),
+      });
+  
+      const data = await response.json();
+      if (response.ok) {
+        console.log(data);
+        return data.output;
+      } else {
+        console.error("Failed to upscale image", data.error);
+        return null;
+      }
+    } catch (error) {
+      console.error("Error calling upscale API:", error);
+      return null;
+    }
   };
 
   const fetchImageAsBuffer = async (url) => {
@@ -49,15 +67,22 @@ const BookGenerator = () => {
     const contentSheet = workbook.addWorksheet('Content');
     const moralSheet = workbook.addWorksheet('Moral');
 
+    console.log(cover, moral)
+
     const upscaledCoverImage = await uploadAndUpscale(cover.image, 'cover.jpg');
     const upscaledMoralImage = await uploadAndUpscale(moral.image, 'moral.jpg');
+
+    console.log(upscaledCoverImage, upscaledMoralImage)
 
     const upscaledPages = await Promise.all(
       pages.map(async (page, index) => {
         const upscaledImage = await uploadAndUpscale(page.image, `page-${index}.jpg`);
+        console.log(upscaledImage)
         return { ...page, image: upscaledImage };
       })
     );
+
+    console.log(upscaledPages);
 
     // Embed images into the sheets
     if (upscaledCoverImage) {
@@ -66,8 +91,13 @@ const BookGenerator = () => {
         buffer: coverImageBuffer,
         extension: 'jpeg',
       });
-      coverSheet.addImage(coverImageId, 'C2:C8');
+      coverSheet.getCell('A1').value = "id";
+      coverSheet.getCell('B1').value = "content";
+      coverSheet.getCell('C1').value = "image";
+
+      coverSheet.getCell('A2').value = 1;
       coverSheet.getCell('B2').value = cover.title;
+      coverSheet.addImage(coverImageId, 'C2:C2');
     }
 
     if (upscaledMoralImage) {
@@ -76,19 +106,33 @@ const BookGenerator = () => {
         buffer: moralImageBuffer,
         extension: 'jpeg',
       });
-      moralSheet.addImage(moralImageId, 'C2:C8');
-      moralSheet.getCell('B2').value = moral.content;
+      moralSheet.getCell('A1').value = "id";
+      moralSheet.getCell('B1').value = "content";
+      moralSheet.getCell('C1').value = "image";
+
+      moralSheet.getCell('A2').value = 1;
+      moralSheet.getCell('B2').value = cover.title;
+      moralSheet.addImage(moralImageId, 'C2:C2');
     }
 
-    upscaledPages.forEach(async (page, index) => {
+    contentSheet.getCell('A1').value = "id";
+    contentSheet.getCell('B1').value = "content";
+    contentSheet.getCell('C1').value = "image";
+
+
+    await Promise.all(upscaledPages.map(async (page, index) => {
+      console.log(page, index);
       const pageImageBuffer = await fetchImageAsBuffer(page.image);
       const pageImageId = workbook.addImage({
         buffer: pageImageBuffer,
         extension: 'jpeg',
       });
-      contentSheet.addImage(pageImageId, `C${index + 2}:C${index + 8}`);
+    
+      contentSheet.getCell(`A${index + 2}`).value = index + 1;
+      contentSheet.addImage(pageImageId, `C${index + 2}:C${index + 2}`);
       contentSheet.getCell(`B${index + 2}`).value = page.content;
-    });
+    }));
+
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
