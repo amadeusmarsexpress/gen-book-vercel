@@ -1,10 +1,8 @@
-"use client";  
+"use client";
 
-import '../app/globals.css'; 
-
+import '../app/globals.css';
 import React, { useState } from 'react';
 import { storage, ref, uploadBytes, getDownloadURL } from '../app/lib/firebase';
-import Replicate from 'replicate';
 import ExcelJS from 'exceljs';
 
 import Cover from '../components/Cover';
@@ -17,7 +15,6 @@ const BookGenerator = () => {
   const [moral, setMoral] = useState({ image: null, content: '' });
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const replicate = new Replicate();
   const addPage = () => setPages([...pages, { image: null, content: '' }]);
   const removePage = (index) => setPages(pages.filter((_, i) => i !== index));
 
@@ -39,10 +36,8 @@ const BookGenerator = () => {
           scale: 2,  // Adjust the scale as needed
         }),
       });
-  
-      const data = await response.json();
+      const data = await response.json(); 
       if (response.ok) {
-        console.log(data);
         return data.output;
       } else {
         console.error("Failed to upscale image", data.error);
@@ -67,22 +62,17 @@ const BookGenerator = () => {
     const contentSheet = workbook.addWorksheet('Content');
     const moralSheet = workbook.addWorksheet('Moral');
 
-    console.log(cover, moral)
-
     const upscaledCoverImage = await uploadAndUpscale(cover.image, 'cover.jpg');
     const upscaledMoralImage = await uploadAndUpscale(moral.image, 'moral.jpg');
 
-    console.log(upscaledCoverImage, upscaledMoralImage)
 
     const upscaledPages = await Promise.all(
       pages.map(async (page, index) => {
         const upscaledImage = await uploadAndUpscale(page.image, `page-${index}.jpg`);
-        console.log(upscaledImage)
         return { ...page, image: upscaledImage };
       })
     );
 
-    console.log(upscaledPages);
 
     // Embed images into the sheets
     if (upscaledCoverImage) {
@@ -97,7 +87,11 @@ const BookGenerator = () => {
 
       coverSheet.getCell('A2').value = 1;
       coverSheet.getCell('B2').value = cover.title;
-      coverSheet.addImage(coverImageId, 'C2:C2');
+      coverSheet.addImage(coverImageId, {
+        tl: { col: 2, row: 1 },
+        ext: { width: 500, height: 200 },
+        editAs: 'oneCell',
+      });
     }
 
     if (upscaledMoralImage) {
@@ -111,36 +105,71 @@ const BookGenerator = () => {
       moralSheet.getCell('C1').value = "image";
 
       moralSheet.getCell('A2').value = 1;
-      moralSheet.getCell('B2').value = cover.title;
-      moralSheet.addImage(moralImageId, 'C2:C2');
+      moralSheet.getCell('B2').value = moral.content;
+      moralSheet.addImage(moralImageId, {
+        tl: { col: 2, row: 1 },
+        ext: { width: 500, height: 200 },
+        editAs: 'oneCell',
+      });
     }
 
     contentSheet.getCell('A1').value = "id";
     contentSheet.getCell('B1').value = "content";
     contentSheet.getCell('C1').value = "image";
 
+    await Promise.all(
+      upscaledPages.map(async (page, index) => {
+        const pageImageBuffer = await fetchImageAsBuffer(page.image);
+        const pageImageId = workbook.addImage({
+          buffer: pageImageBuffer,
+          extension: 'jpeg',
+        });
 
-    await Promise.all(upscaledPages.map(async (page, index) => {
-      console.log(page, index);
-      const pageImageBuffer = await fetchImageAsBuffer(page.image);
-      const pageImageId = workbook.addImage({
-        buffer: pageImageBuffer,
-        extension: 'jpeg',
-      });
-    
-      contentSheet.getCell(`A${index + 2}`).value = index + 1;
-      contentSheet.addImage(pageImageId, `C${index + 2}:C${index + 2}`);
-      contentSheet.getCell(`B${index + 2}`).value = page.content;
-    }));
+        contentSheet.getCell(`A${index + 2}`).value = index + 1;
+        contentSheet.addImage(pageImageId, {
+          tl: { col: 2, row: index + 1 },
+          ext: { width: 500, height: 200 },
+          editAs: 'oneCell',
+        });
+        contentSheet.getCell(`B${index + 2}`).value = page.content;
+      })
+    );
 
-
+    // Save the file as a base64-encoded string
     const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'AesopBook.xlsx';
-    a.click();
+    const fileData = buffer.toString('base64');
+
+    // Call the API to upload the file to Google Sheets
+    try {
+      const response = await fetch('/api/uploadToGoogleSheets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileName: 'AesopBook.xlsx',
+          fileData,
+          email: 'pythonlearnreal@gmail.com',  // Email to share the sheet with
+        }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();  // Get the response as a Blob (binary data)
+        const url = window.URL.createObjectURL(blob);  // Create a URL for the Blob
+  
+        // Trigger download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'AesopBook.xlsx';  // File name for download
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);  // Clean up after download
+      } else {
+        console.error('Failed to upload and download file from Google Sheets');
+      }
+    } catch (error) {
+      console.error('Error uploading file to Google Sheets:', error);
+    }
 
     setIsGenerating(false);
   };

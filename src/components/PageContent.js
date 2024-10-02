@@ -15,7 +15,7 @@ const PageContent = ({ page, setPage, removePage }) => {
       />
       {/* Preview the image */}
       {page.image && (
-        <img src={URL.createObjectURL(page.image)} alt="Page Preview" className="mt-4" />
+        <img src={URL.createObjectURL(page.image)} alt="Page Preview" className="mt-4 w-32 h-32 object-contain" />
       )}
       <textarea
         className="border p-2 w-full mt-2"

@@ -3,7 +3,6 @@ import React from 'react';
 const Cover = ({ cover, setCover }) => {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];  // Store the actual file
-    console.log(file);
     setCover({ ...cover, image: file });
   };
 
@@ -19,7 +18,7 @@ const Cover = ({ cover, setCover }) => {
       />
       <input type="file" onChange={handleImageUpload} />
       {cover.image && (
-        <img src={URL.createObjectURL(cover.image)} alt="Cover Preview" className="mt-4" />
+        <img src={URL.createObjectURL(cover.image)} alt="Cover Preview" className="mt-4 w-32 h-32 object-contain" />
       )}
     </div>
   );
